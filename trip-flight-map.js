@@ -1,4 +1,4 @@
-/* SE Trip Manager · Trip Flight Map v1.7
+/* SE Trip Manager · Trip Flight Map v1.8
  * 2D / globe projection based on MapLibre GL JS; shared db is read-only in map.
  * Geographic routes and flight motion are SIMULATIONS, not actual flight itineraries.
  */
@@ -11,7 +11,7 @@ const FLIGHT_COORDS={
   WH:{label:'우한',lng:114.305,lat:30.593},
   SX:{label:'샤오싱',lng:120.580,lat:30.031}
 };
-let fmMap=null,fmMarkers=[],fmPlaying=false,fmClock=null,fmProgress=0,fmMode='2d',fmSelected='',fmStart='',fmEnd='',fmPerson='ALL',fmSpeed=1,fmTimerElapsed=0;
+let fmMap=null,fmMarkers=[],fmNamedMarkers=new Map(),fmPlaying=false,fmClock=null,fmProgress=0,fmMode='2d',fmSelected='',fmStart='',fmEnd='',fmPerson='ALL',fmSpeed=1,fmTimerElapsed=0;
 const fmToday=()=>today();
 function fmCoord(id){const r=byId(db.regions||[],id);if(r && Number.isFinite(Number(r.lng)) && Number.isFinite(Number(r.lat)) && r.lng!==undefined && r.lat!==undefined)return {label:r.name,lng:Number(r.lng),lat:Number(r.lat)};return FLIGHT_COORDS[id]||null;}
 function fmHome(person){return person?.homeRegionId || (person?.country==='CN'?null:'KR');}
@@ -32,7 +32,6 @@ function renderFlightMap(){const s=fmStartState();return `<section class="panel"
   </div>
   <div class="flight-layout">
     <div id="fmMap" class="flight-map"><div class="flight-map-fallback">지도를 불러오는 중입니다…</div><div id="fmMapStatus" class="flight-status">${s.d} · 재생 준비</div></div>
-    <div id="fmSummary" class="flight-sidebar"><strong>이동 현황</strong><p class="flight-notice">출장을 선택하면 이곳에서 이동과 업무 상태를 확인할 수 있습니다.</p></div>
   </div>
   <div class="flight-controls playback-bar" style="margin-top:18px">
    <button class="btn primary" id="fmPlay" onclick="fmTogglePlay()">▶ 재생</button>
@@ -67,7 +66,7 @@ function fmFallbackMap(message='외부 지도 연결이 차단되어 간략 이�
  if(page!=='flightmap')return;
  const el=document.getElementById('fmMap');if(!el)return;
  if(fmMap){try{fmMap.remove();}catch(e){}fmMap=null;fmMarkers=[];}
- let status=el.querySelector('#fmMapStatus');
+ fmNamedMarkers.clear();let status=el.querySelector('#fmMapStatus');
  if(!status){status=document.createElement('div');status.id='fmMapStatus';status.className='flight-status';el.appendChild(status);}
  el.querySelectorAll('.flight-map-fallback,#fmOfflineMap').forEach(e=>e.remove());
  const main=document.createElement('div');main.id='fmOfflineMap';main.className='flight-offline';
@@ -88,19 +87,26 @@ function fmVisiblePeople(d,fraction){
  }return result;
 }
 function fmMovingCoord(a,b,f){const line=fmLinePath(a,b,100);const f0=Math.max(0,Math.min(1,f)),i=f0*(line.length-1),low=Math.floor(i),high=Math.min(line.length-1,low+1),q=i-low;return {lng:line[low][0]*(1-q)+line[high][0]*q,lat:line[low][1]*(1-q)+line[high][1]*q};}
-function fmOfflineVisual(d,fraction){const holder=document.getElementById('fmOfflineMap');if(!holder)return;
+function fmOfflineVisual(d,fraction){
+ const holder=document.getElementById('fmOfflineMap');if(!holder)return;
  const routes=holder.querySelector('#fmOfflineRoutes'),points=holder.querySelector('#fmOfflinePoints');if(!routes||!points)return;
- let lines='',dots='';const actors=fmVisiblePeople(d,fraction),groups=new Map();
- for(const a of actors){if(a.phase==='moving'){
-  const f=a.fraction,part=fmMovingCoord(a.from,a.to,f),origin=fmProject(a.from.lng,a.from.lat),dest=fmProject(part.lng,part.lat),color=fmRouteColor(a.trip);
-  // Only the currently animated segment is displayed. Completed route history is not retained.
-  let coords=fmLinePath(a.from,a.to,80).slice(0,Math.max(2,Math.round(f*80)+1)).map(([lng,lat])=>{const xy=fmProject(lng,lat);return `${xy.x},${xy.y}`}).join(' ');
-  lines+=`<polyline points="${coords}" fill="none" stroke="${color}" stroke-width="3.3" stroke-dasharray="8 5"/>`;
-  const x=dest.x,y=dest.y;dots+=`<g><text x="${x}" y="${y}" font-size="27" text-anchor="middle">${a.trip.transport==='ground'?'🚙':'✈️'}</text><rect x="${x-53}" y="${y+5}" width="106" height="24" rx="6" fill="#fff9e8" stroke="#dca863"/><text x="${x}" y="${y+21}" font-size="12" font-weight="bold" fill="#23364d" text-anchor="middle">${fmEncode(a.person.name)}</text></g>`;
- }else{const code=a.phase==='onsite'?a.trip.regionId:fmHome(a.person),key=code||'unknown';if(!groups.has(key))groups.set(key,{coord:a.coord,people:[],kind:a.phase,code});groups.get(key).people.push(a.person.name);}}
- for(const g of groups.values()){
-  const p=fmProject(g.coord.lng,g.coord.lat),x=p.x,y=p.y,label=g.people.join(', '),w=Math.max(96,Math.min(260,label.length*8+20));
-  dots+=`<g><circle cx="${x}" cy="${y}" r="10" fill="${g.kind==='onsite'?'#e8bd52':'#6ca7b5'}" stroke="#fff" stroke-width="2"/><rect x="${x-w/2}" y="${y+14}" width="${w}" height="37" rx="8" fill="#ffffffed" stroke="#91b4c4"/><text x="${x}" y="${y+28}" font-size="12" text-anchor="middle" font-weight="bold" fill="#234">${fmEncode(g.code)} · ${g.kind==='onsite'?'🏭 출장':'🏠 근무지'}</text><text x="${x}" y="${y+43}" font-size="11" text-anchor="middle" fill="#234">${fmEncode(label)}</text></g>`;
+ let lines='',dots='';const actors=fmVisiblePeople(d,fraction),placeCount=new Map();
+ // Every employee has an independent name tag, including people remaining at their base.
+ for(const a of actors){
+  let point,icon,color,kind;
+  if(a.phase==='moving'){
+   const f=a.fraction;point=fmMovingCoord(a.from,a.to,f);icon=a.trip.transport==='ground'?'🚙':'✈';color=fmRouteColor(a.trip);kind='moving';
+   const coords=fmLinePath(a.from,a.to,80).slice(0,Math.max(2,Math.round(f*80)+1)).map(([lng,lat])=>{const p=fmProject(lng,lat);return `${p.x},${p.y}`}).join(' ');
+   lines+=`<polyline points="${coords}" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="7 5"/>`;
+  }else{
+   point=a.coord;icon=a.phase==='onsite'?'🏭':'🏠';color=a.phase==='onsite'?'#bb8a24':'#477c9c';kind=a.phase;
+  }
+  if(!point)continue;
+  const key=a.phase==='moving'?a.person.id:(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
+  const n=placeCount.get(key)||0;placeCount.set(key,n+1);
+  const xy=fmProject(point.lng,point.lat),x=xy.x+(kind==='moving'?0:(n%2?85:-85)),y=xy.y+(kind==='moving'?0:Math.floor(n/2)*34);
+  const name=fmEncode(a.person.name),width=Math.max(108,Math.min(192,a.person.name.length*9+51));
+  dots+=`<g class="offline-person-tag"><rect x="${x-width/2}" y="${y-17}" width="${width}" height="32" rx="8" fill="${kind==='moving'?'#fff0cf':kind==='onsite'?'#fff8d9':'#f1fbff'}" stroke="${color}" stroke-width="2"/><text x="${x-width/2+15}" y="${y+5}" fill="#173047" font-size="15">${icon}</text><text x="${x-width/2+37}" y="${y+4}" font-size="12" font-weight="bold" fill="#1a354b">${name}</text></g>`;
  }
  for(const key of ['KR','BJ','HF','NB','WX','WH','SX']){const c=fmCoord(key);if(!c)continue;const a=fmProject(c.lng,c.lat);dots+=`<circle cx="${a.x}" cy="${a.y}" r="3" fill="#223d59"/><text x="${a.x+9}" y="${a.y-8}" font-size="13" fill="#1c314a">${fmEncode(key)}</text>`;}
  routes.innerHTML=lines;points.innerHTML=dots;
@@ -108,7 +114,7 @@ function fmOfflineVisual(d,fraction){const holder=document.getElementById('fmOff
 async function initFlightMap(){if(page!=='flightmap')return;const serial=++fmInitSerial;
  const s=fmStartState();fmStart=s.start;fmEnd=s.end;fmSelected=s.d<fmStart?fmStart:s.d>fmEnd?fmEnd:s.d;
  const el=document.getElementById('fmMap');if(!el)return;
- if(fmMap){try{fmMap.remove()}catch(e){}fmMap=null;fmMarkers=[];}
+ if(fmMap){try{fmMap.remove()}catch(e){}fmMap=null;fmMarkers=[];fmNamedMarkers.clear();}
  fmFallbackMap('온라인 지도를 불러오는 중입니다.');fmUpdate();
  const available=await fmLoadMapLibre();if(page!=='flightmap'||serial!==fmInitSerial)return;
  if(!available){fmFallbackMap('외부 지도 라이브러리에 접속할 수 없습니다.');fmUpdate();return;}
@@ -139,21 +145,42 @@ function fmMakeNamedMarker(point,caption,icon,cls,click){
  el.append(pic,name);el.title=caption;el.tabIndex=0;if(click){el.onclick=click;el.onkeydown=e=>{if(e.key==='Enter')click()};}
  const m=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([point.lng,point.lat]).addTo(fmMap);fmMarkers.push(m);
 }
+// A stable map marker per person: only its coordinate and current state change each frame.
+// This avoids flickering caused by destroying/recreating the name tag 60 times a second.
 function fmBuildVisual(d,fraction){
  if(!fmMap||!fmMap.getSource('fmLines')){fmOfflineVisual(d,fraction);return;}
- for(const m of fmMarkers)m.remove();fmMarkers=[];
- const features=[],groups=new Map();
- for(const a of fmVisiblePeople(d,fraction)){
+ const actors=fmVisiblePeople(d,fraction),features=[],live=new Set(),counts=new Map();
+ for(const a of actors){
+  let point,icon,cls;
   if(a.phase==='moving'){
    const f=a.fraction,route=fmLinePath(a.from,a.to,90),index=Math.max(1,Math.round(f*90));
-   const pos=fmMovingCoord(a.from,a.to,f);
+   point=fmMovingCoord(a.from,a.to,f);icon=a.trip.transport==='ground'?'🚙':'✈️';cls='flight-moving';
    features.push({type:'Feature',properties:{color:fmRouteColor(a.trip)},geometry:{type:'LineString',coordinates:route.slice(0,index+1)}});
-   fmMakeNamedMarker(pos,a.person.name,a.trip.transport==='ground'?'🚙':'✈️','flight-moving',()=>fmSelectPerson(a.person.id));
-  }else{
-   const code=a.phase==='onsite'?a.trip.regionId:fmHome(a.person);if(!groups.has(code))groups.set(code,{coord:a.coord,people:[],phase:a.phase});groups.get(code).people.push(a.person);
+  }else{point=a.coord;icon=a.phase==='onsite'?'🏭':'🏠';cls=a.phase==='onsite'?'flight-onsite':'flight-base';}
+  if(!point)continue;
+  live.add(a.person.id);
+  const place=a.phase==='moving'?null:(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
+  const offsetIndex=place===null?0:(counts.get(place)||0);if(place!==null)counts.set(place,offsetIndex+1);
+  const offset=place===null?[0,0]:[(offsetIndex%2===0?-1:1)*(45+Math.floor(offsetIndex/6)*22),Math.floor(offsetIndex/2)*37-15];
+  let entry=fmNamedMarkers.get(a.person.id);
+  if(!entry){
+    const el=document.createElement('div');el.className='flight-label '+cls;
+    const pic=document.createElement('span');pic.className='label-icon';pic.textContent=icon;
+    const name=document.createElement('span');name.className='label-name';name.textContent=a.person.name;
+    el.append(pic,name);el.tabIndex=0;el.setAttribute('role','button');
+    el.addEventListener('click',()=>fmSelectPerson(a.person.id));
+    el.addEventListener('keydown',e=>{if(e.key==='Enter')fmSelectPerson(a.person.id)});
+    const marker=new maplibregl.Marker({element:el,anchor:'center',offset}).setLngLat([point.lng,point.lat]).addTo(fmMap);
+    entry={marker,el,pic,name,lastOffset:''};fmNamedMarkers.set(a.person.id,entry);
   }
+  entry.el.className='flight-label '+cls;
+  if(entry.pic.textContent!==icon)entry.pic.textContent=icon;
+  if(entry.name.textContent!==a.person.name)entry.name.textContent=a.person.name;
+  entry.el.title=`${a.person.name} · ${a.phase==='moving'?'이동 중':a.phase==='onsite'?'현지 근무':'기준 근무지'}`;
+  entry.marker.setLngLat([point.lng,point.lat]);
+  const ofs=offset.join(',');if(entry.lastOffset!==ofs){entry.marker.setOffset(offset);entry.lastOffset=ofs;}
  }
- for(const [code,g] of groups){fmMakeNamedMarker(g.coord,`${code} · ${g.people.map(p=>p.name).join(', ')}`,g.phase==='onsite'?'🏭':'🏠',g.phase==='onsite'?'flight-onsite':'flight-base',()=>fmSelectPerson(g.people[0].id));}
+ for(const [id,entry] of fmNamedMarkers){if(!live.has(id)){entry.marker.remove();fmNamedMarkers.delete(id);}}
  fmMap.getSource('fmLines').setData({type:'FeatureCollection',features});
 }
 function fmSelectPerson(id){fmPerson=fmPerson===id?'ALL':id;const sel=document.getElementById('fmPerson');if(sel)sel.value=fmPerson;fmUpdate();}
@@ -163,7 +190,7 @@ function fmUpdate(fraction=0){if(page!=='flightmap')return;const slider=document
  document.getElementById('fmCurrentDate').textContent=fmDateLabel(fmSelected);document.getElementById('fmRangeLabel').textContent=fmDateLabel(fmStart)+' — '+fmDateLabel(fmEnd);
  const all=fmTrips(),active=fmRecords(fmSelected),working=active.filter(t=>fmTravelState(t,fmSelected,fraction).phase==='work');
  document.getElementById('fmCounts').textContent=`기간 내 출장 ${all.length}건 · 당일 출장 ${active.length}건`;
- const visible=fmVisiblePeople(fmSelected,fraction),homePeople=visible.filter(x=>x.phase==='base'),onsitePeople=visible.filter(x=>x.phase==='onsite');const summary=document.getElementById('fmSummary');if(summary){summary.innerHTML=`<strong>📍 ${fmDateLabel(fmSelected)} 이동 현황</strong><div class="flight-line">기간 내 출장 <b>${all.length}건</b> · 현지 근무 <b>${working.length}명</b></div>${active.length?active.map(t=>{const person=byId(db.people,t.personId),orig=t.originRegionId||fmHome(person),status=fmStatusText(t,fmSelected,fraction),report=db.reports.find(r=>r.date===fmSelected&&r.personId===t.personId);return `<div class="flight-person" onclick="fmSelectPerson('${fmEncode(t.personId)}')"><b>${fmEncode(person?.name||'미등록')}</b> <span class="pill">${fmEncode(tripRegion(t))}</span><div class="muted" style="margin-top:5px">${fmEncode(orig||'출발지 미지정')} → ${fmEncode(tripRegion(t))} · ${fmEncode(status)}</div><div class="muted">${t.start} ~ ${t.end}</div><button class="btn small" style="margin-top:7px" onclick="event.stopPropagation();fmOpenReport('${fmSelected}','${fmEncode(t.personId)}')">${report?'📝 보고서 열기':'＋ 일일보고'}</button></div>`}).join(''):'<p class="flight-notice">선택한 날짜에 출장 일정이 없어.</p>'}<div class="flight-line"><b>🏠 기준 근무지 (${homePeople.length}명)</b><div class="muted">${homePeople.map(x=>`${fmEncode(x.person.name)} (${fmEncode(fmHome(x.person))})`).join(', ')||'없음'}</div></div><div class="flight-line"><b>🏭 현지 출장 (${onsitePeople.length}명)</b><div class="muted">${onsitePeople.map(x=>`${fmEncode(x.person.name)} (${fmEncode(x.trip.regionId)})`).join(', ')||'없음'}</div></div><p class="flight-notice">인원 선택: ${fmPerson==='ALL'?'전체':fmEncode(personName(fmPerson))} · 지도에서 근무 아이콘을 클릭하면 일일보고를 열 수 있어.</p>`;}
+ // Status list removed: each person is visible on the map as a live name tag.
  const status=document.getElementById('fmMapStatus');if(status)status.textContent=fmDateLabel(fmSelected)+' · '+active.length+'명 출장 / '+working.length+'명 근무';
  fmBuildVisual(fmSelected,fraction);
 }

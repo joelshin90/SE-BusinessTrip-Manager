@@ -1,21 +1,21 @@
-# SE Trip Manager v1.7 — Motion / Staff / Year Filters
+# SE Trip Manager v1.8 · Map Name Tag Edition
 
-GitHub Pages + Firebase Realtime Database (`se-trip-manager/v1`) based on previous v1.6.1.
+GitHub Pages + Firebase Realtime Database (se-trip-manager/v1) 호환. 기존 데이터 구조와 경로를 유지합니다.
 
-## Changes
-1. Trip Flight Map shows only the **currently moving** flight/ground segment, progressively extended as the animated marker travels. Finished paths are cleared rather than accumulating.
-2. Names are shown alongside moving airplane/car icons, grouped at Chinese on-site regions and at each employee's configured home location (including Korea staff who are not travelling). Employees with no configured home location are not assigned an invented location.
-3. Playback speed combo and controls use a shared 40px height and aligned field labels.
-4. Year quick-select (Jan 1–Dec 31) added to schedule range search, trip flight map range search, and calendar; dashboard and holiday manager already had a year selector.
-5. Trips whose end date precedes today are saved as `완료` automatically except cancelled trips (including edits).
-6. Changing the trip start date constrains the end date, moves it forward when needed, and attempts to open the end-date picker (browser support varies).
+## 개선
+- 지도 우측 이동 현황 패널 제거, 지도 전폭 사용
+- 직원마다 독립 네임택을 유지하며 출발지 → 비행 중 → 현지 체류 → 귀환 → 기준 근무지로 이동
+- 이동 중 네임택에 비행기/차량 아이콘 표시, 점선 경로는 이동 중에만 표시
+- 같은 장소의 직원 이름표는 위치를 분산해 표시
+- 데이터 관리 직원 정렬 드래그 핸들(☰)을 맨 오른쪽 `이동` 열로 옮김
+- 가용 지도 CDN 실패 시 간략 SVG 지도에서도 개별 직원 이름표 표시
+- 별도 DB 초기화나 초기 업로드 불필요. 기존 Firebase 동기화 설정 유지.
 
-## Deployment
-Upload `index.html` and `trip-flight-map.js` to the **repository root** and commit together. Do not upload temporary test artifacts. Refresh the GitHub Pages deployment (Ctrl+Shift+R).
+## 설치
+GitHub repository 루트의 `index.html`, `trip-flight-map.js`를 **함께 교체**하고 commit합니다. `README.md`는 선택적으로 교체하세요. GitHub Pages에서 강력 새로고침 후 지도와 직원 목록을 확인합니다.
 
-## Data and limitations
-- Existing Firebase data path and authentication remain unchanged. Back up using the app JSON export before updating.
-- The animation depicts **scheduled** transitions and does not represent actual GPS positions, live flights, or proven attendance.
-- Movements are simulated on trip start/end days, and base location comes from each employee's configured home. If a employee has no city configured, their location cannot be plotted.
-- External MapLibre/tiles may be blocked on corporate networks; the built-in schematic map remains available.
-- JavaScript syntax checked with Node. Full production GitHub Pages/Firebase integration was not tested in this environment.
+## 테스트 범위
+JavaScript 문법 검사 통과. 제한된 브라우저 환경의 간략 지도에서 직원별 이름표·이동 경로와 데이터 관리 핸들 위치를 검사함. 외부 지도 타일 및 실제 Firebase 원격 접속은 검증하지 못함.
+
+## 지도 시뮬레이션 가정
+출장 시작일에 기준 근무지에서 출발하고 종료일에 귀환한다고 가정합니다. 실제 항공편이나 GPS 데이터가 아닙니다. 일일보고는 기존 메뉴/데이터를 유지합니다.
