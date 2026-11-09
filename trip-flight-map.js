@@ -1,4 +1,4 @@
-/* SE Trip Manager · Trip Flight Map v1.8
+/* SE Trip Manager · Trip Flight Map v1.9
  * 2D / globe projection based on MapLibre GL JS; shared db is read-only in map.
  * Geographic routes and flight motion are SIMULATIONS, not actual flight itineraries.
  */
@@ -76,8 +76,16 @@ function fmFallbackMap(message='외부 지도 연결이 차단되어 간략 이�
 function fmProject(lng,lat){return {x:Math.round((lng-105)/25*930+35),y:Math.round((43-lat)/17*550+27)};}
 function fmVisiblePeople(d,fraction){
  const result=[];for(const p of db.people){if(fmPerson!=='ALL'&&p.id!==fmPerson)continue;
-  const active=fmTrips().filter(t=>t.personId===p.id&&t.start<=d&&t.end>=d).sort((a,b)=>a.start.localeCompare(b.start));
-  if(active.length){const t=active[0],s=fmTravelState(t,d,fraction);if(s.phase==='out'||s.phase==='return')result.push({person:p,phase:'moving',trip:t,from:s.origin,to:s.destination,fraction:Math.min(1,Math.max(0,s.frac))});
+  const active=fmTrips().filter(t=>t.personId===p.id&&t.start<=d&&t.end>=d).sort((a,b)=>b.start.localeCompare(a.start));
+  if(active.length){
+   // With overlapping reservations, prioritize the trip RETURNING today in the latter part
+   // of the day, so another open trip cannot conceal its return animation.
+   const t=(fraction>=0.5?active.find(x=>x.end===d):active.find(x=>x.start===d))||active[0];
+   const s=fmTravelState(t,d,fraction);
+   if(s.phase==='return' && s.frac>=1){
+     // End-of-day: snap back to actual origin and retain company name tag.
+     result.push({person:p,phase:'base',coord:s.destination});
+   }else if(s.phase==='out'||s.phase==='return')result.push({person:p,phase:'moving',trip:t,from:s.origin,to:s.destination,fraction:Math.min(1,Math.max(0,s.frac))});
    else if(s.phase==='work'){const c=fmPoint(t,'end');if(c)result.push({person:p,phase:'onsite',coord:c,trip:t});}
    else{const home=fmCoord(fmHome(p));if(home)result.push({person:p,phase:'base',coord:home});}
   }else{
@@ -86,6 +94,12 @@ function fmVisiblePeople(d,fraction){
   }
  }return result;
 }
+// Reusable vector drawing of a cleanroom technician in hood, mask and white coverall.
+function fmCleanroomIcon(){return `<svg width="25" height="25" viewBox="0 0 32 32" aria-label="방진복 착용 직원" role="img" xmlns="http://www.w3.org/2000/svg"><path d="M6 28v-8c0-3 2-5 5-6V9c0-5 2-7 5-7s5 2 5 7v5c3 1 5 3 5 6v8Z" fill="#f3fbff" stroke="#4c738c" stroke-width="1.5"/><path d="M9 14V9c0-5 3-7 7-7s7 2 7 7v5" fill="none" stroke="#a6d7e6" stroke-width="2"/><ellipse cx="16" cy="11" rx="6" ry="6.5" fill="#ffdec1" stroke="#7191a4" stroke-width="1"/><path d="M10 10c1-6 11-6 12 0" fill="#f6fdff" stroke="#7191a4" stroke-width="1.3"/><path d="M10.5 12.5h11v4.3c-4 3-7 3-11 0z" fill="#d7f1f8" stroke="#6298aa" stroke-width="1"/><path d="M12 11h2m4 0h2" stroke="#25435a" stroke-width="1.3" stroke-linecap="round"/><path d="M16 20v8" stroke="#7eb9c9" stroke-width="1.4"/><path d="M11 17 8 19m13-2 3 2" stroke="#7eb9c9" stroke-width="1.2"/></svg>`;}
+function fmCompanyIcon(){return `<svg width="24" height="24" viewBox="0 0 32 32" aria-label="회사 근무" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="4" width="20" height="24" rx="2.5" fill="#eaf5fb" stroke="#587c95" stroke-width="1.5"/><path d="M12 28V22H20V28" fill="#bddded" stroke="#587c95" stroke-width="1.2"/><g fill="#8cc1d8"><rect x="10" y="8" width="3" height="3"/><rect x="15" y="8" width="3" height="3"/><rect x="20" y="8" width="3" height="3"/><rect x="10" y="13" width="3" height="3"/><rect x="15" y="13" width="3" height="3"/><rect x="20" y="13" width="3" height="3"/></g><path d="M4 28H28" stroke="#587c95" stroke-width="1.5" stroke-linecap="round"/></svg>`;}
+function fmActorSymbol(phase,transport){return phase==='onsite'?'cleanroom':phase==='base'?'company':transport==='ground'?'🚙':'✈️';}
+function fmSetIcon(target,symbol){if(symbol==='cleanroom'){target.innerHTML=fmCleanroomIcon();}else if(symbol==='company'){target.innerHTML=fmCompanyIcon();}else if(target.textContent!==symbol||target.querySelector('svg'))target.textContent=symbol;}
+function fmOfflineIcon(symbol,x,y){if(symbol==='cleanroom')return `<g transform="translate(${x-13} ${y-14}) scale(.84)"><path d="M6 28v-8q0-5 5-6V9q0-7 5-7t5 7v5q5 1 5 6v8Z" fill="#f6fbff" stroke="#507b92" stroke-width="1.5"/><ellipse cx="16" cy="11" rx="6" ry="7" fill="#ffe0c8"/><path d="M10 11q0-8 6-8t6 8" fill="none" stroke="#b6dfe9" stroke-width="3"/><path d="M10 13h12v4q-6 4-12 0Z" fill="#d5f2f7" stroke="#52889d"/><path d="M16 20v8" stroke="#79b7c5" stroke-width="1.3"/></g>`; if(symbol==='company')return `<g transform="translate(${x-12} ${y-13}) scale(.82)"><rect x="6" y="4" width="20" height="24" rx="2.5" fill="#eaf5fb" stroke="#587c95" stroke-width="1.8"/><path d="M12 28V22H20V28" fill="#bddded" stroke="#587c95" stroke-width="1.4"/><g fill="#8cc1d8"><rect x="10" y="8" width="3" height="3"/><rect x="15" y="8" width="3" height="3"/><rect x="20" y="8" width="3" height="3"/><rect x="10" y="13" width="3" height="3"/><rect x="15" y="13" width="3" height="3"/><rect x="20" y="13" width="3" height="3"/></g><path d="M4 28H28" stroke="#587c95" stroke-width="1.7" stroke-linecap="round"/></g>`; return `<text x="${x}" y="${y}" fill="#173047" font-size="17">${symbol}</text>`;}
 function fmMovingCoord(a,b,f){const line=fmLinePath(a,b,100);const f0=Math.max(0,Math.min(1,f)),i=f0*(line.length-1),low=Math.floor(i),high=Math.min(line.length-1,low+1),q=i-low;return {lng:line[low][0]*(1-q)+line[high][0]*q,lat:line[low][1]*(1-q)+line[high][1]*q};}
 function fmOfflineVisual(d,fraction){
  const holder=document.getElementById('fmOfflineMap');if(!holder)return;
@@ -95,18 +109,18 @@ function fmOfflineVisual(d,fraction){
  for(const a of actors){
   let point,icon,color,kind;
   if(a.phase==='moving'){
-   const f=a.fraction;point=fmMovingCoord(a.from,a.to,f);icon=a.trip.transport==='ground'?'🚙':'✈';color=fmRouteColor(a.trip);kind='moving';
+   const f=a.fraction;point=fmMovingCoord(a.from,a.to,f);icon=fmActorSymbol('moving',a.trip.transport);color=fmRouteColor(a.trip);kind='moving';
    const coords=fmLinePath(a.from,a.to,80).slice(0,Math.max(2,Math.round(f*80)+1)).map(([lng,lat])=>{const p=fmProject(lng,lat);return `${p.x},${p.y}`}).join(' ');
    lines+=`<polyline points="${coords}" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="7 5"/>`;
   }else{
-   point=a.coord;icon=a.phase==='onsite'?'🏭':'🏠';color=a.phase==='onsite'?'#bb8a24':'#477c9c';kind=a.phase;
+   point=a.coord;icon=fmActorSymbol(a.phase);color=a.phase==='onsite'?'#bb8a24':'#477c9c';kind=a.phase;
   }
   if(!point)continue;
   const key=a.phase==='moving'?a.person.id:(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
   const n=placeCount.get(key)||0;placeCount.set(key,n+1);
-  const xy=fmProject(point.lng,point.lat),x=xy.x+(kind==='moving'?0:(n%2?85:-85)),y=xy.y+(kind==='moving'?0:Math.floor(n/2)*34);
+  const xy=fmProject(point.lng,point.lat),x=xy.x,y=xy.y+(kind==='moving'?0:(n*36)-18);
   const name=fmEncode(a.person.name),width=Math.max(108,Math.min(192,a.person.name.length*9+51));
-  dots+=`<g class="offline-person-tag"><rect x="${x-width/2}" y="${y-17}" width="${width}" height="32" rx="8" fill="${kind==='moving'?'#fff0cf':kind==='onsite'?'#fff8d9':'#f1fbff'}" stroke="${color}" stroke-width="2"/><text x="${x-width/2+15}" y="${y+5}" fill="#173047" font-size="15">${icon}</text><text x="${x-width/2+37}" y="${y+4}" font-size="12" font-weight="bold" fill="#1a354b">${name}</text></g>`;
+  dots+=`<g class="offline-person-tag"><rect x="${x-width/2}" y="${y-17}" width="${width}" height="32" rx="8" fill="${kind==='moving'?'#fff0cf':kind==='onsite'?'#fff8d9':'#f1fbff'}" stroke="${color}" stroke-width="2"/>${fmOfflineIcon(icon,x-width/2+11,y+5)}<text x="${x-width/2+37}" y="${y+4}" font-size="12" font-weight="bold" fill="#1a354b">${name}</text></g>`;
  }
  for(const key of ['KR','BJ','HF','NB','WX','WH','SX']){const c=fmCoord(key);if(!c)continue;const a=fmProject(c.lng,c.lat);dots+=`<circle cx="${a.x}" cy="${a.y}" r="3" fill="#223d59"/><text x="${a.x+9}" y="${a.y-8}" font-size="13" fill="#1c314a">${fmEncode(key)}</text>`;}
  routes.innerHTML=lines;points.innerHTML=dots;
@@ -140,7 +154,7 @@ function fmMarker(lng,lat,text,cls,html,click){if(!fmMap)return;const el=documen
 function fmOpenReport(date,personId){const r=db.reports.find(x=>x.date===date&&x.personId===personId);editReport(date,r?.id||'');}
 function fmMakeNamedMarker(point,caption,icon,cls,click){
  if(!fmMap)return;const el=document.createElement('div');el.className='flight-label '+cls;
- const pic=document.createElement('span');pic.className='label-icon';pic.textContent=icon;
+ const pic=document.createElement('span');pic.className='label-icon';fmSetIcon(pic,icon);
  const name=document.createElement('span');name.className='label-name';name.textContent=caption;
  el.append(pic,name);el.title=caption;el.tabIndex=0;if(click){el.onclick=click;el.onkeydown=e=>{if(e.key==='Enter')click()};}
  const m=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([point.lng,point.lat]).addTo(fmMap);fmMarkers.push(m);
@@ -154,18 +168,18 @@ function fmBuildVisual(d,fraction){
   let point,icon,cls;
   if(a.phase==='moving'){
    const f=a.fraction,route=fmLinePath(a.from,a.to,90),index=Math.max(1,Math.round(f*90));
-   point=fmMovingCoord(a.from,a.to,f);icon=a.trip.transport==='ground'?'🚙':'✈️';cls='flight-moving';
+   point=fmMovingCoord(a.from,a.to,f);icon=fmActorSymbol('moving',a.trip.transport);cls='flight-moving';
    features.push({type:'Feature',properties:{color:fmRouteColor(a.trip)},geometry:{type:'LineString',coordinates:route.slice(0,index+1)}});
-  }else{point=a.coord;icon=a.phase==='onsite'?'🏭':'🏠';cls=a.phase==='onsite'?'flight-onsite':'flight-base';}
+  }else{point=a.coord;icon=fmActorSymbol(a.phase);cls=a.phase==='onsite'?'flight-onsite':'flight-base';}
   if(!point)continue;
   live.add(a.person.id);
   const place=a.phase==='moving'?null:(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
   const offsetIndex=place===null?0:(counts.get(place)||0);if(place!==null)counts.set(place,offsetIndex+1);
-  const offset=place===null?[0,0]:[(offsetIndex%2===0?-1:1)*(45+Math.floor(offsetIndex/6)*22),Math.floor(offsetIndex/2)*37-15];
+  const offset=place===null?[0,0]:[0, offsetIndex*38-16];
   let entry=fmNamedMarkers.get(a.person.id);
   if(!entry){
     const el=document.createElement('div');el.className='flight-label '+cls;
-    const pic=document.createElement('span');pic.className='label-icon';pic.textContent=icon;
+    const pic=document.createElement('span');pic.className='label-icon';fmSetIcon(pic,icon);
     const name=document.createElement('span');name.className='label-name';name.textContent=a.person.name;
     el.append(pic,name);el.tabIndex=0;el.setAttribute('role','button');
     el.addEventListener('click',()=>fmSelectPerson(a.person.id));
@@ -174,9 +188,9 @@ function fmBuildVisual(d,fraction){
     entry={marker,el,pic,name,lastOffset:''};fmNamedMarkers.set(a.person.id,entry);
   }
   entry.el.className='flight-label '+cls;
-  if(entry.pic.textContent!==icon)entry.pic.textContent=icon;
+  if(entry.pic.textContent!==icon || entry.pic.querySelector('svg'))fmSetIcon(entry.pic,icon);
   if(entry.name.textContent!==a.person.name)entry.name.textContent=a.person.name;
-  entry.el.title=`${a.person.name} · ${a.phase==='moving'?'이동 중':a.phase==='onsite'?'현지 근무':'기준 근무지'}`;
+  entry.el.title=`${a.person.name} · ${a.phase==='moving'?'이동 중':a.phase==='onsite'?'출장지 근무':'회사 근무'}`;
   entry.marker.setLngLat([point.lng,point.lat]);
   const ofs=offset.join(',');if(entry.lastOffset!==ofs){entry.marker.setOffset(offset);entry.lastOffset=ofs;}
  }
@@ -184,7 +198,7 @@ function fmBuildVisual(d,fraction){
  fmMap.getSource('fmLines').setData({type:'FeatureCollection',features});
 }
 function fmSelectPerson(id){fmPerson=fmPerson===id?'ALL':id;const sel=document.getElementById('fmPerson');if(sel)sel.value=fmPerson;fmUpdate();}
-function fmStatusText(t,d,frac){const s=fmTravelState(t,d,frac);return s.phase==='out'?'✈ 출발':s.phase==='return'?'✈ 귀환':s.phase==='work'?'🏭 현지 근무':'📍 근무지 미설정';}
+function fmStatusText(t,d,frac){const s=fmTravelState(t,d,frac);return s.phase==='out'?'✈ 출발':s.phase==='return'?'✈ 귀환':s.phase==='work'?'🥼 현지 근무':'📍 근무지 미설정';}
 function fmUpdate(fraction=0){if(page!=='flightmap')return;const slider=document.getElementById('fmSlider');if(!slider)return;
  const total=Math.max(1,diff(fmStart,fmEnd)-1);fmProgress=Math.max(0,Math.min(total,diff(fmStart,fmSelected)-1));slider.max=total;slider.value=fmProgress;
  document.getElementById('fmCurrentDate').textContent=fmDateLabel(fmSelected);document.getElementById('fmRangeLabel').textContent=fmDateLabel(fmStart)+' — '+fmDateLabel(fmEnd);
@@ -197,4 +211,26 @@ function fmUpdate(fraction=0){if(page!=='flightmap')return;const slider=document
 function fmSetProgress(v){const max=Math.max(0,diff(fmStart,fmEnd)-1);const x=Math.max(0,Math.min(max,Math.round(v)));fmSelected=addDays(fmStart,x);fmUpdate();}
 function fmStep(n){fmPause();fmSetProgress(fmProgress+n);}
 function fmPause(){fmPlaying=false;if(fmClock){cancelAnimationFrame(fmClock);fmClock=null;}const b=document.getElementById('fmPlay');if(b)b.textContent='▶ 재생';}
-function fmTogglePlay(){if(fmPlaying){fmPause();return;}if(fmSelected>=fmEnd)fmSetProgress(0);fmPlaying=true;fmTimerElapsed=0;const b=document.getElementById('fmPlay');if(b)b.textContent='Ⅱ 일시정지';let last=performance.now();function frame(now){if(!fmPlaying||page!=='flightmap'){fmPause();return;}const dt=Math.min(now-last,120);last=now;fmTimerElapsed+=dt*fmSpeed;const dayMs=1750;let part=fmTimerElapsed/dayMs;if(part>=1){fmTimerElapsed=0;if(fmSelected>=fmEnd){fmPause();return;}fmSetProgress(fmProgress+1);part=0;}fmUpdate(part);fmClock=requestAnimationFrame(frame);}fmClock=requestAnimationFrame(frame);}
+function fmTogglePlay(){
+ if(fmPlaying){fmPause();return;}
+ if(fmSelected>=fmEnd)fmSetProgress(0);
+ fmPlaying=true;fmTimerElapsed=0;
+ const b=document.getElementById('fmPlay');if(b)b.textContent='Ⅱ 일시정지';
+ let last=performance.now();
+ function frame(now){
+  if(!fmPlaying||page!=='flightmap'){fmPause();return;}
+  const dt=Math.min(now-last,120);last=now;
+  fmTimerElapsed+=dt*fmSpeed;
+  const dayMs=1750;
+  while(fmTimerElapsed>=dayMs){
+   // Always show 100% of the CURRENT day first, including the return flight.
+   fmUpdate(1);
+   fmTimerElapsed-=dayMs;
+   if(fmSelected>=fmEnd){fmPause();return;}
+   fmSetProgress(fmProgress+1);
+  }
+  fmUpdate(fmTimerElapsed/dayMs);
+  fmClock=requestAnimationFrame(frame);
+ }
+ fmClock=requestAnimationFrame(frame);
+}
