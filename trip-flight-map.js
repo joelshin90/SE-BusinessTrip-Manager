@@ -75,7 +75,8 @@ function fmFallbackMap(message='외부 지도 연결이 차단되어 간략 이�
 }
 function fmProject(lng,lat){return {x:Math.round((lng-105)/25*930+35),y:Math.round((43-lat)/17*550+27)};}
 function fmVisiblePeople(d,fraction){
- const result=[];for(const p of db.people){if(fmPerson!=='ALL'&&p.id!==fmPerson)continue;
+ const people=[...db.people].sort((a,b)=>(Number.isFinite(+a.sortOrder)?+a.sortOrder:1e9)-(Number.isFinite(+b.sortOrder)?+b.sortOrder:1e9)||String(a.name||'').localeCompare(String(b.name||'')));
+ const result=[];for(const p of people){if(fmPerson!=='ALL'&&p.id!==fmPerson)continue;
   const active=fmTrips().filter(t=>t.personId===p.id&&t.start<=d&&t.end>=d).sort((a,b)=>b.start.localeCompare(a.start));
   if(active.length){
    // With overlapping reservations, prioritize the trip RETURNING today in the latter part
@@ -95,11 +96,11 @@ function fmVisiblePeople(d,fraction){
  }return result;
 }
 // Reusable vector drawing of a cleanroom technician in hood, mask and white coverall.
-function fmCleanroomIcon(){return `<svg width="14" height="14" viewBox="0 0 32 32" aria-label="방진복 착용 직원" role="img" xmlns="http://www.w3.org/2000/svg"><path d="M6 28v-8c0-3 2-5 5-6V9c0-5 2-7 5-7s5 2 5 7v5c3 1 5 3 5 6v8Z" fill="#f3fbff" stroke="#4c738c" stroke-width="1.5"/><path d="M9 14V9c0-5 3-7 7-7s7 2 7 7v5" fill="none" stroke="#a6d7e6" stroke-width="2"/><ellipse cx="16" cy="11" rx="6" ry="6.5" fill="#ffdec1" stroke="#7191a4" stroke-width="1"/><path d="M10 10c1-6 11-6 12 0" fill="#f6fdff" stroke="#7191a4" stroke-width="1.3"/><path d="M10.5 12.5h11v4.3c-4 3-7 3-11 0z" fill="#d7f1f8" stroke="#6298aa" stroke-width="1"/><path d="M12 11h2m4 0h2" stroke="#25435a" stroke-width="1.3" stroke-linecap="round"/><path d="M16 20v8" stroke="#7eb9c9" stroke-width="1.4"/><path d="M11 17 8 19m13-2 3 2" stroke="#7eb9c9" stroke-width="1.2"/></svg>`;}
-function fmCompanyIcon(){return `<svg width="13" height="13" viewBox="0 0 32 32" aria-label="회사 근무" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="4" width="20" height="24" rx="2.5" fill="#eaf5fb" stroke="#587c95" stroke-width="1.5"/><path d="M12 28V22H20V28" fill="#bddded" stroke="#587c95" stroke-width="1.2"/><g fill="#8cc1d8"><rect x="10" y="8" width="3" height="3"/><rect x="15" y="8" width="3" height="3"/><rect x="20" y="8" width="3" height="3"/><rect x="10" y="13" width="3" height="3"/><rect x="15" y="13" width="3" height="3"/><rect x="20" y="13" width="3" height="3"/></g><path d="M4 28H28" stroke="#587c95" stroke-width="1.5" stroke-linecap="round"/></svg>`;}
+function fmCleanroomIcon(){return `<svg width="17" height="17" viewBox="0 0 32 32" aria-label="방진복 착용 직원" role="img" xmlns="http://www.w3.org/2000/svg"><path d="M6 28v-8c0-3 2-5 5-6V9c0-5 2-7 5-7s5 2 5 7v5c3 1 5 3 5 6v8Z" fill="#f3fbff" stroke="#4c738c" stroke-width="1.5"/><path d="M9 14V9c0-5 3-7 7-7s7 2 7 7v5" fill="none" stroke="#a6d7e6" stroke-width="2"/><ellipse cx="16" cy="11" rx="6" ry="6.5" fill="#ffdec1" stroke="#7191a4" stroke-width="1"/><path d="M10 10c1-6 11-6 12 0" fill="#f6fdff" stroke="#7191a4" stroke-width="1.3"/><path d="M10.5 12.5h11v4.3c-4 3-7 3-11 0z" fill="#d7f1f8" stroke="#6298aa" stroke-width="1"/><path d="M12 11h2m4 0h2" stroke="#25435a" stroke-width="1.3" stroke-linecap="round"/><path d="M16 20v8" stroke="#7eb9c9" stroke-width="1.4"/><path d="M11 17 8 19m13-2 3 2" stroke="#7eb9c9" stroke-width="1.2"/></svg>`;}
+function fmCompanyIcon(){return `<svg width="16" height="16" viewBox="0 0 32 32" aria-label="회사 근무" role="img" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="4" width="20" height="24" rx="2.5" fill="#eaf5fb" stroke="#587c95" stroke-width="1.5"/><path d="M12 28V22H20V28" fill="#bddded" stroke="#587c95" stroke-width="1.2"/><g fill="#8cc1d8"><rect x="10" y="8" width="3" height="3"/><rect x="15" y="8" width="3" height="3"/><rect x="20" y="8" width="3" height="3"/><rect x="10" y="13" width="3" height="3"/><rect x="15" y="13" width="3" height="3"/><rect x="20" y="13" width="3" height="3"/></g><path d="M4 28H28" stroke="#587c95" stroke-width="1.5" stroke-linecap="round"/></svg>`;}
 function fmActorSymbol(phase,transport){return phase==='onsite'?'cleanroom':phase==='base'?'company':transport==='ground'?'🚙':'✈️';}
 function fmSetIcon(target,symbol){if(symbol==='cleanroom'){target.innerHTML=fmCleanroomIcon();}else if(symbol==='company'){target.innerHTML=fmCompanyIcon();}else if(target.textContent!==symbol||target.querySelector('svg'))target.textContent=symbol;}
-function fmOfflineIcon(symbol,x,y){if(symbol==='cleanroom')return `<g transform="translate(${x-7} ${y-7}) scale(.42)"><path d="M6 28v-8q0-5 5-6V9q0-7 5-7t5 7v5q5 1 5 6v8Z" fill="#f6fbff" stroke="#507b92" stroke-width="1.5"/><ellipse cx="16" cy="11" rx="6" ry="7" fill="#ffe0c8"/><path d="M10 11q0-8 6-8t6 8" fill="none" stroke="#b6dfe9" stroke-width="3"/><path d="M10 13h12v4q-6 4-12 0Z" fill="#d5f2f7" stroke="#52889d"/><path d="M16 20v8" stroke="#79b7c5" stroke-width="1.3"/></g>`; if(symbol==='company')return `<g transform="translate(${x-6} ${y-7}) scale(.40)"><rect x="6" y="4" width="20" height="24" rx="2.5" fill="#eaf5fb" stroke="#587c95" stroke-width="1.8"/><path d="M12 28V22H20V28" fill="#bddded" stroke="#587c95" stroke-width="1.4"/><g fill="#8cc1d8"><rect x="10" y="8" width="3" height="3"/><rect x="15" y="8" width="3" height="3"/><rect x="20" y="8" width="3" height="3"/><rect x="10" y="13" width="3" height="3"/><rect x="15" y="13" width="3" height="3"/><rect x="20" y="13" width="3" height="3"/></g><path d="M4 28H28" stroke="#587c95" stroke-width="1.7" stroke-linecap="round"/></g>`; return `<text x="${x}" y="${y}" fill="#173047" font-size="17">${symbol}</text>`;}
+function fmOfflineIcon(symbol,x,y){if(symbol==='cleanroom')return `<g transform="translate(${x-8} ${y-8}) scale(.50)"><path d="M6 28v-8q0-5 5-6V9q0-7 5-7t5 7v5q5 1 5 6v8Z" fill="#f6fbff" stroke="#507b92" stroke-width="1.5"/><ellipse cx="16" cy="11" rx="6" ry="7" fill="#ffe0c8"/><path d="M10 11q0-8 6-8t6 8" fill="none" stroke="#b6dfe9" stroke-width="3"/><path d="M10 13h12v4q-6 4-12 0Z" fill="#d5f2f7" stroke="#52889d"/><path d="M16 20v8" stroke="#79b7c5" stroke-width="1.3"/></g>`; if(symbol==='company')return `<g transform="translate(${x-7} ${y-8}) scale(.48)"><rect x="6" y="4" width="20" height="24" rx="2.5" fill="#eaf5fb" stroke="#587c95" stroke-width="1.8"/><path d="M12 28V22H20V28" fill="#bddded" stroke="#587c95" stroke-width="1.4"/><g fill="#8cc1d8"><rect x="10" y="8" width="3" height="3"/><rect x="15" y="8" width="3" height="3"/><rect x="20" y="8" width="3" height="3"/><rect x="10" y="13" width="3" height="3"/><rect x="15" y="13" width="3" height="3"/><rect x="20" y="13" width="3" height="3"/></g><path d="M4 28H28" stroke="#587c95" stroke-width="1.7" stroke-linecap="round"/></g>`; return `<text x="${x}" y="${y}" fill="#173047" font-size="17">${symbol}</text>`;}
 function fmMovingCoord(a,b,f){const line=fmLinePath(a,b,100);const f0=Math.max(0,Math.min(1,f)),i=f0*(line.length-1),low=Math.floor(i),high=Math.min(line.length-1,low+1),q=i-low;return {lng:line[low][0]*(1-q)+line[high][0]*q,lat:line[low][1]*(1-q)+line[high][1]*q};}
 function fmOfflineVisual(d,fraction){
  const holder=document.getElementById('fmOfflineMap');if(!holder)return;
@@ -119,8 +120,8 @@ function fmOfflineVisual(d,fraction){
   const key=a.phase==='moving'?a.person.id:(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
   const n=placeCount.get(key)||0;placeCount.set(key,n+1);
   const xy=fmProject(point.lng,point.lat),x=xy.x,y=xy.y+(kind==='moving'?0:14+n*10);
-  const name=fmEncode(a.person.name),width=Math.max(46,Math.min(82,a.person.name.length*5.2+22));
-  dots+=`<g class="offline-person-tag"><rect x="${x-width/2}" y="${y-9}" width="${width}" height="18" rx="5" fill="${kind==='moving'?'rgba(255,240,207,0.5)':kind==='onsite'?'rgba(255,248,217,0.5)':'rgba(241,251,255,0.5)'}" stroke="${color}" stroke-width="1.2"/>${fmOfflineIcon(icon,x-width/2+7,y+3)}<text x="${x-width/2+22}" y="${y+3}" font-size="8.5" font-weight="bold" fill="#1a354b">${name}</text></g>`;
+  const name=fmEncode(a.person.name),width=Math.max(54,Math.min(98,a.person.name.length*6.2+26));
+  dots+=`<g class="offline-person-tag"><rect x="${x-width/2}" y="${y-10}" width="${width}" height="20" rx="5" fill="${kind==='moving'?'rgba(255,240,207,0.5)':kind==='onsite'?'rgba(255,248,217,0.5)':'rgba(241,251,255,0.5)'}" stroke="${color}" stroke-width="1.2"/>${fmOfflineIcon(icon,x-width/2+8,y+3)}<text x="${x-width/2+24}" y="${y+4}" font-size="10" font-weight="bold" fill="#1a354b">${name}</text></g>`;
  }
  for(const key of ['KR','BJ','HF','NB','WX','WH','SX']){const c=fmCoord(key);if(!c)continue;const a=fmProject(c.lng,c.lat);dots+=`<circle cx="${a.x}" cy="${a.y}" r="3" fill="#223d59"/><text x="${a.x+9}" y="${a.y-8}" font-size="13" fill="#1c314a">${fmEncode(key)}</text>`;}
  routes.innerHTML=lines;points.innerHTML=dots;
@@ -163,7 +164,16 @@ function fmMakeNamedMarker(point,caption,icon,cls,click){
 // This avoids flickering caused by destroying/recreating the name tag 60 times a second.
 function fmBuildVisual(d,fraction){
  if(!fmMap||!fmMap.getSource('fmLines')){fmOfflineVisual(d,fraction);return;}
- const actors=fmVisiblePeople(d,fraction),features=[],live=new Set(),counts=new Map();
+ const actors=fmVisiblePeople(d,fraction),features=[],live=new Set();
+ const groups=new Map();
+ for(const a of actors){
+  if(a.phase==='moving') continue;
+  const place=(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
+  if(!groups.has(place)) groups.set(place,[]);
+  groups.get(place).push(a.person.id);
+ }
+ const placeOffset=new Map();
+ for(const [place, ids] of groups){ ids.forEach((id,idx)=>placeOffset.set(id,[0,14+idx*10])); }
  for(const a of actors){
   let point,icon,cls;
   if(a.phase==='moving'){
@@ -173,9 +183,7 @@ function fmBuildVisual(d,fraction){
   }else{point=a.coord;icon=fmActorSymbol(a.phase);cls=a.phase==='onsite'?'flight-onsite':'flight-base';}
   if(!point)continue;
   live.add(a.person.id);
-  const place=a.phase==='moving'?null:(a.phase==='onsite'?a.trip.regionId:fmHome(a.person))||'base';
-  const offsetIndex=place===null?0:(counts.get(place)||0);if(place!==null)counts.set(place,offsetIndex+1);
-  const offset=place===null?[0,0]:[0, 14 + offsetIndex*10];
+  const offset=a.phase==='moving'?[0,0]:(placeOffset.get(a.person.id)||[0,14]);
   let entry=fmNamedMarkers.get(a.person.id);
   if(!entry){
     const el=document.createElement('div');el.className='flight-label '+cls;
